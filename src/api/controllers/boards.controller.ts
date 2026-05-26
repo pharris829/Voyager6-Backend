@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { BoardsService } from '../../services/boards.service';
+import { ActivityService } from '../../services/activity.service';
 
 const svc = new BoardsService();
+const activitySvc = new ActivityService();
 
 export class BoardsController {
   async list(req: Request, res: Response, next: NextFunction) {
@@ -51,6 +53,14 @@ export class BoardsController {
     try {
       await svc.addMember(req.params.id, req.body.user_id);
       res.status(201).json({ message: 'Member added' });
+    } catch (err) { next(err); }
+  }
+
+  async activity(req: Request, res: Response, next: NextFunction) {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+      const events = await activitySvc.listForBoard(req.params.id, limit);
+      res.json({ data: events });
     } catch (err) { next(err); }
   }
 }

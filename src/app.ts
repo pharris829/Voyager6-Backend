@@ -6,6 +6,7 @@ import tasksRouter from './api/routes/tasks';
 import boardsRouter from './api/routes/boards';
 import workflowsRouter from './api/routes/workflows';
 import usersRouter from './api/routes/users';
+import commentsRouter from './api/routes/comments';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -21,6 +22,7 @@ app.use('/api/v1', tasksRouter);
 app.use('/api/v1/boards', boardsRouter);
 app.use('/api/v1', workflowsRouter);
 app.use('/api/v1/users', usersRouter);
+app.use('/api/v1', commentsRouter);
 
 app.use(errorHandler);
 

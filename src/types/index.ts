@@ -65,6 +65,17 @@ export interface ActivityEvent {
   created_at: Date;
 }
 
+export interface Comment {
+  id: string;
+  task_id: string;
+  author_id: string;
+  author_name?: string;
+  author_avatar?: string;
+  body: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface AuthPayload {
   userId: string;
   email: string;

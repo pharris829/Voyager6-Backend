@@ -92,6 +92,33 @@ export class TasksService {
     await db.query('DELETE FROM tasks WHERE id = $1', [id]);
   }
 
+  async reorder(boardId: string, order: Array<{ id: string; position: number }>): Promise<void> {
+    // Validate all task IDs belong to the board before writing anything.
+    const ids = order.map((o) => o.id);
+    const { rows } = await db.query<{ id: string }>(
+      `SELECT id FROM tasks WHERE id = ANY($1) AND board_id = $2`,
+      [ids, boardId]
+    );
+    if (rows.length !== ids.length) {
+      throw new AppError(422, 'One or more task IDs do not belong to this board');
+    }
+
+    // Update all positions in a single transaction.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      for (const { id, position } of order) {
+        await client.query('UPDATE tasks SET position = $2, updated_at = NOW() WHERE id = $1', [id, position]);
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   private async checkWipLimit(boardId: string, status: TaskStatus) {
     const board = await db.query<{ wip_limit: number | null }>(
       'SELECT wip_limit FROM boards WHERE id = $1',

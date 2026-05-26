@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { TasksService } from '../../services/tasks.service';
+import { ActivityService } from '../../services/activity.service';
 
 const svc = new TasksService();
+const activitySvc = new ActivityService();
 
 export class TasksController {
   async list(req: Request, res: Response, next: NextFunction) {
@@ -44,6 +46,20 @@ export class TasksController {
     try {
       const task = await svc.move(req.params.id, req.body.status, req.user!.userId);
       res.json({ data: task });
+    } catch (err) { next(err); }
+  }
+
+  async reorder(req: Request, res: Response, next: NextFunction) {
+    try {
+      await svc.reorder(req.params.boardId, req.body.order);
+      res.status(204).send();
+    } catch (err) { next(err); }
+  }
+
+  async activity(req: Request, res: Response, next: NextFunction) {
+    try {
+      const events = await activitySvc.listForTask(req.params.id);
+      res.json({ data: events });
     } catch (err) { next(err); }
   }
 }
