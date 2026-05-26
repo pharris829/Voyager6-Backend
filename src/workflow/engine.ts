@@ -29,7 +29,7 @@ export class WorkflowEngine {
     context: Record<string, unknown>
   ): boolean {
     for (const [key, expected] of Object.entries(conditions)) {
-      const actual = (task as Record<string, unknown>)[key] ?? context[key];
+      const actual = (task as unknown as Record<string, unknown>)[key] ?? context[key];
       if (actual !== expected) return false;
     }
     return true;

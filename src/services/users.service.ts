@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { db } from '../data/db';
 import { User } from '../types';
@@ -8,9 +8,7 @@ import { AppError } from '../middleware/errorHandler';
 
 interface UserRow extends User { password_hash: string; }
 
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password + config.jwt.secret).digest('hex');
-}
+const BCRYPT_ROUNDS = 12;
 
 export class UsersService {
   async register(data: { email: string; password: string; name: string }): Promise<{ user: User; token: string }> {
@@ -20,7 +18,7 @@ export class UsersService {
     const id = uuidv4();
     const result = await db.query<UserRow>(
       'INSERT INTO users (id, email, name, password_hash) VALUES ($1,$2,$3,$4) RETURNING *',
-      [id, data.email, data.name, hashPassword(data.password)]
+      [id, data.email, data.name, await bcrypt.hash(data.password, BCRYPT_ROUNDS)]
     );
     const user = this.sanitize(result.rows[0]);
     return { user, token: this.sign(user) };
@@ -29,7 +27,7 @@ export class UsersService {
   async login(email: string, password: string): Promise<{ user: User; token: string }> {
     const result = await db.query<UserRow>('SELECT * FROM users WHERE email = $1', [email]);
     const row = result.rows[0];
-    if (!row || row.password_hash !== hashPassword(password)) {
+    if (!row || !(await bcrypt.compare(password, row.password_hash))) {
       throw new AppError(401, 'Invalid credentials');
     }
     const user = this.sanitize(row);

@@ -14,7 +14,7 @@ router.post(
   '/boards/:boardId/tasks',
   param('boardId').isUUID(),
   body('title').trim().notEmpty(),
-  body('priority').isIn(['low', 'medium', 'high', 'urgent']),
+  body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
   validate,
   ctrl.create
 );
@@ -23,7 +23,8 @@ router.patch(
   '/tasks/:id',
   param('id').isUUID(),
   body('title').optional().trim().notEmpty(),
-  body('status').optional().isIn(['backlog', 'todo', 'in_progress', 'review', 'done', 'archived']),
+  body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
+  body('status').not().exists().withMessage('Use PATCH /tasks/:id/move to change status'),
   validate,
   ctrl.update
 );

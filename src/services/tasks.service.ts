@@ -4,6 +4,7 @@ import { Task, TaskStatus } from '../types';
 import { AppError } from '../middleware/errorHandler';
 import { WorkflowEngine } from '../workflow/engine';
 import { EventBus } from '../events/eventBus';
+import { isValidTransition } from '../workflow/stateMachine';
 
 const engine = new WorkflowEngine();
 const events = EventBus.getInstance();
@@ -24,11 +25,19 @@ export class TasksService {
 
   async create(data: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'position'>): Promise<Task> {
     const id = uuidv4();
+    const status = data.status ?? 'backlog';
+
+    const posResult = await db.query<{ next: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM tasks WHERE board_id = $1 AND status = $2`,
+      [data.board_id, status]
+    );
+    const position = posResult.rows[0].next;
+
     const result = await db.query<Task>(
-      `INSERT INTO tasks (id, board_id, title, description, status, priority, assignee_id, reporter_id, due_date, tags)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO tasks (id, board_id, title, description, status, priority, assignee_id, reporter_id, due_date, position, tags)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
-      [id, data.board_id, data.title, data.description, data.status ?? 'backlog', data.priority ?? 'medium', data.assignee_id, data.reporter_id, data.due_date, data.tags ?? []]
+      [id, data.board_id, data.title, data.description, status, data.priority ?? 'medium', data.assignee_id, data.reporter_id, data.due_date, position, data.tags ?? []]
     );
     const task = result.rows[0];
     await engine.evaluate('created', task);
@@ -40,17 +49,19 @@ export class TasksService {
     const existing = await this.getById(id);
     if (!existing) throw new AppError(404, 'Task not found');
 
+    // Build a dynamic SET clause so explicit nulls clear the field rather than
+    // being swallowed by COALESCE (e.g. assignee_id: null should unassign).
+    const MUTABLE = ['title', 'description', 'priority', 'assignee_id', 'due_date', 'tags'] as const;
+    type Mutable = typeof MUTABLE[number];
+    const fields = MUTABLE.filter((k) => k in data);
+    if (fields.length === 0) return existing;
+
+    const setClauses = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
+    const values = fields.map((k) => (data as Record<Mutable, unknown>)[k]);
+
     const result = await db.query<Task>(
-      `UPDATE tasks SET
-        title = COALESCE($2, title),
-        description = COALESCE($3, description),
-        priority = COALESCE($4, priority),
-        assignee_id = COALESCE($5, assignee_id),
-        due_date = COALESCE($6, due_date),
-        tags = COALESCE($7, tags),
-        updated_at = NOW()
-       WHERE id = $1 RETURNING *`,
-      [id, data.title, data.description, data.priority, data.assignee_id, data.due_date, data.tags]
+      `UPDATE tasks SET ${setClauses}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [id, ...values]
     );
     const task = result.rows[0];
     events.emit('task.updated', { task, actorId, before: existing });
@@ -60,6 +71,10 @@ export class TasksService {
   async move(id: string, status: TaskStatus, actorId: string): Promise<Task> {
     const existing = await this.getById(id);
     if (!existing) throw new AppError(404, 'Task not found');
+
+    if (!isValidTransition(existing.status, status)) {
+      throw new AppError(422, `Invalid transition: ${existing.status} → ${status}`);
+    }
 
     await this.checkWipLimit(existing.board_id, status);
 
